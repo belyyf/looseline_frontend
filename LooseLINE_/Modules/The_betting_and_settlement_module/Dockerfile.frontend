@@ -1,0 +1,34 @@
+# ===============================================
+# Stage 1: Build
+# ===============================================
+FROM node:20-alpine AS builder
+WORKDIR /LooseLINE
+
+# 1. Install Shared dependencies
+COPY Shared/package*.json ./Shared/
+RUN --mount=type=cache,target=/root/.npm cd Shared && npm ci
+
+# 2. Install Module dependencies
+COPY Modules/The_betting_and_settlement_module/package*.json ./Modules/The_betting_and_settlement_module/
+RUN --mount=type=cache,target=/root/.npm cd Modules/The_betting_and_settlement_module && npm ci
+
+# 3. Copy source code
+COPY Shared ./Shared
+COPY Modules/The_betting_and_settlement_module ./Modules/The_betting_and_settlement_module
+
+# 4. Build the application
+WORKDIR /LooseLINE/Modules/The_betting_and_settlement_module
+RUN npm run build
+
+# ===============================================
+# Stage 2: Production
+# ===============================================
+FROM nginx:alpine AS runner
+
+# Copy built files
+COPY --from=builder /LooseLINE/Modules/The_betting_and_settlement_module/dist /usr/share/nginx/html
+
+# Expose port
+EXPOSE 80
+
+CMD ["nginx", "-g", "daemon off;"]

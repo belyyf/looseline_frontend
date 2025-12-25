@@ -1,0 +1,13 @@
+node_modules
+.git
+.next
+dist
+build
+.vscode
+.idea
+*.log
+.DS_Store
+tmp
+Modules/**/node_modules
+Modules/**/.next
+Modules/**/dist

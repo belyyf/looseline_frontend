@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Добавить новое событие</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 p-8">
+    <div class="max-w-2xl mx-auto bg-white p-8 rounded-lg shadow">
+        <h1 class="text-2xl font-bold mb-6">Добавить новое спортивное событие</h1>
+        
+        <form id="eventForm" class="space-y-4">
+            <!-- Спорт -->
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Вид спорта</label>
+                <select id="sport_type" class="w-full p-2 border rounded" required>
+                    <option value="football">Футбол</option>
+                    <option value="basketball">Баскетбол</option>
+                    <option value="hockey">Хоккей</option>
+                    <option value="tennis">Теннис</option>
+                </select>
+            </div>
+
+            <!-- Лига -->
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Лига</label>
+                <input type="text" id="league_name" class="w-full p-2 border rounded" 
+                       placeholder="Например: Английская Премьер-лига" required>
+            </div>
+
+            <!-- Команды -->
+            <div class="grid grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Домашняя команда</label>
+                    <input type="text" id="home_team" class="w-full p-2 border rounded" 
+                           placeholder="Например: Ливерпуль" required>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Гостевая команда</label>
+                    <input type="text" id="away_team" class="w-full p-2 border rounded" 
+                           placeholder="Например: Челси" required>
+                </div>
+            </div>
+
+            <!-- Дата и время -->
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Дата и время</label>
+                <input type="datetime-local" id="event_datetime" class="w-full p-2 border rounded" required>
+            </div>
+
+            <!-- Коэффициенты -->
+            <div class="grid grid-cols-3 gap-4 mt-6">
+                <div class="text-center">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">П1 (Победа 1)</label>
+                    <input type="number" step="0.01" value="2.0" id="coef1" 
+                           class="w-full p-2 border rounded text-center" required>
+                </div>
+                <div class="text-center">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">X (Ничья)</label>
+                    <input type="number" step="0.01" value="3.0" id="coefX" 
+                           class="w-full p-2 border rounded text-center" required>
+                </div>
+                <div class="text-center">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">П2 (Победа 2)</label>
+                    <input type="number" step="0.01" value="2.5" id="coef2" 
+                           class="w-full p-2 border rounded text-center" required>
+                </div>
+            </div>
+
+            <!-- Кнопка отправки -->
+            <div class="pt-4">
+                <button type="submit" class="w-full bg-blue-600 text-white py-2 px-4 rounded hover:bg-blue-700 transition">
+                    Создать событие
+                </button>
+            </div>
+        </form>
+
+        <div id="message" class="mt-4 p-4 rounded hidden"></div>
+    </div>
+
+    <script>
+        document.getElementById('eventForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const messageDiv = document.getElementById('message');
+            messageDiv.classList.add('hidden');
+            
+            // Проверка на одинаковые команды
+            const homeTeam = document.getElementById('home_team').value.trim();
+            const awayTeam = document.getElementById('away_team').value.trim();
+            
+            if (homeTeam.toLowerCase() === awayTeam.toLowerCase()) {
+                showMessage('Команды должны быть разными!', 'error');
+                return;
+            }
+            
+            // Проверка даты
+            const eventDate = new Date(document.getElementById('event_datetime').value);
+            if (eventDate <= new Date()) {
+                showMessage('Дата события должна быть в будущем!', 'error');
+                return;
+            }
+            
+            // Подготовка данных
+            const eventData = {
+                sport_type: document.getElementById('sport_type').value,
+                league_name: document.getElementById('league_name').value,
+                home_team: homeTeam,
+                away_team: awayTeam,
+                event_datetime: eventDate.toISOString(),
+                odds_data: [
+                    { bet_type: '1', coefficient: parseFloat(document.getElementById('coef1').value) },
+                    { bet_type: 'X', coefficient: parseFloat(document.getElementById('coefX').value) },
+                    { bet_type: '2', coefficient: parseFloat(document.getElementById('coef2').value) }
+                ]
+            };
+            
+            try {
+                const response = await fetch('http://localhost:5000/api/events', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-Admin-Id': 'admin_1'
+                    },
+                    body: JSON.stringify(eventData)
+                });
+                
+                const result = await response.json();
+                
+                if (response.ok) {
+                    showMessage('Событие успешно создано!', 'success');
+                    // Очистка формы
+                    document.getElementById('eventForm').reset();
+                } else {
+                    showMessage(`Ошибка: ${result.error || 'Неизвестная ошибка'}`, 'error');
+                }
+            } catch (error) {
+                console.error('Ошибка при создании события:', error);
+                showMessage('Произошла ошибка при создании события', 'error');
+            }
+        });
+        
+        function showMessage(message, type) {
+            const messageDiv = document.getElementById('message');
+            messageDiv.textContent = message;
+            messageDiv.className = `mt-4 p-4 rounded ${type === 'error' ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}`;
+            messageDiv.classList.remove('hidden');
+        }
+        
+        // Установка минимальной даты (текущая дата + 1 день)
+        const tomorrow = new Date();
+tomorrow.setDate(tomorrow.getDate() + 1);
+const minDate = tomorrow.toISOString().slice(0, 16);
+document.getElementById('event_datetime').min = minDate;
+    </script>
+</body>
+</html>

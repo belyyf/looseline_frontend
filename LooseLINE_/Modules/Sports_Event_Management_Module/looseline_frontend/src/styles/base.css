@@ -1,0 +1,16 @@
+/* 
+ * Дополнительные базовые стили - ТЁМНАЯ ТЕМА
+ * Основные глобальные стили определены в index.css
+ */
+
+/* Тёмный фон для всей страницы */
+html,
+body {
+    background-color: #1a252f;
+    min-height: 100vh;
+}
+
+#root {
+    min-height: 100vh;
+    background-color: #1a252f;
+}

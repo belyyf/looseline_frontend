@@ -1,0 +1,285 @@
+name: looseline
+
+services:
+  # ===============================================
+  # INFRASTRUCTURE SERVICES
+  # ===============================================
+  
+  postgres:
+    image: postgres:15-alpine
+    container_name: looseline_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-looseline}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-looseline_secret}
+      POSTGRES_DB: ${POSTGRES_DB:-looseline}
+      POSTGRES_INITDB_ARGS: "-E UTF8 --locale=C.UTF-8"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init-db.sh:/docker-entrypoint-initdb.d/init-db.sh:ro
+    ports:
+      - "5432:5432"
+    networks:
+      - looseline_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-looseline}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  redis:
+    image: redis:7-alpine
+    container_name: looseline_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - looseline_network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "5m"
+        max-file: "2"
+
+  nginx:
+    image: nginx:alpine
+    container_name: looseline_nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./Shared:/app/Shared:ro
+    networks:
+      - looseline_network
+    depends_on:
+      - auth-app
+      - finance-backend
+      - sports-backend
+      - betting-frontend
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ===============================================
+  # AUTH MODULE (Next.js + Better-auth)
+  # ===============================================
+
+  auth-migrations:
+    build:
+      context: .
+      dockerfile: ./Modules/Authentication_and_User_Management_Module/Dockerfile
+      target: builder
+    container_name: looseline_auth_migrations
+    restart: "no"
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${AUTH_DB:-looseline_auth}?sslmode=disable
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-temp_secret_for_migrations}
+    networks:
+      - looseline_network
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: >
+      sh -c "
+        echo '⏳ Waiting for postgres DNS...' &&
+        for i in 1 2 3 4 5; do
+          if getent hosts postgres > /dev/null 2>&1; then
+            echo '✅ postgres resolved!' && break;
+          fi;
+          echo \"Attempt $$i: waiting for DNS...\" && sleep 2;
+        done &&
+        echo '🔧 Running Better Auth migrations...' &&
+        npx @better-auth/cli generate --config ./lib/auth.ts --yes &&
+        npx @better-auth/cli migrate --config ./lib/auth.ts --yes &&
+        echo '✅ Better Auth tables created!'
+      "
+    profiles:
+      - migrations
+
+  auth-app:
+    build:
+      context: .
+      dockerfile: ./Modules/Authentication_and_User_Management_Module/Dockerfile
+      target: runner
+    container_name: looseline_auth_app
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-looseline}:${POSTGRES_PASSWORD:-looseline_secret}@postgres:5432/${AUTH_DB:-looseline_auth}?sslmode=disable
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-change_this_secret}
+      NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-http://localhost}
+      NODE_ENV: production
+    ports:
+      - "3000:3000"
+    networks:
+      - looseline_network
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # ===============================================
+  # FINANCE MODULE (FastAPI + Stripe)
+  # ===============================================
+
+  finance-backend:
+    build:
+      context: ./Modules/Finance_and_History_Module/backend
+      dockerfile: Dockerfile
+    container_name: looseline_finance_backend
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-looseline}:${POSTGRES_PASSWORD:-looseline_secret}@postgres:5432/${FINANCE_DB:-looseline_finance}?sslmode=disable
+      REDIS_URL: redis://redis:6379/0
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY}
+      STRIPE_PUBLISHABLE_KEY: ${STRIPE_PUBLISHABLE_KEY}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET}
+      SECRET_KEY: ${SECRET_KEY:-your-secret-key-change-in-production}
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+    ports:
+      - "8000:8000"
+    networks:
+      - looseline_network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - finance_reports:/app/reports
+      - finance_logs:/app/logs
+
+  finance-frontend:
+    image: nginx:alpine
+    container_name: looseline_finance_frontend
+    restart: unless-stopped
+    ports:
+      - "3001:80"
+    volumes:
+      - ./Modules/Finance_and_History_Module/frontend/wallet:/usr/share/nginx/html:ro
+      - ./Modules/Finance_and_History_Module/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    networks:
+      - looseline_network
+    depends_on:
+      - finance-backend
+
+  finance-migrations:
+    build:
+      context: ./Modules/Finance_and_History_Module/backend
+      dockerfile: Dockerfile
+    container_name: looseline_finance_migrations
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-looseline}:${POSTGRES_PASSWORD:-looseline_secret}@postgres:5432/${FINANCE_DB:-looseline_finance}?sslmode=disable
+    networks:
+      - looseline_network
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: alembic upgrade head
+    profiles:
+      - migrations
+
+  # ===============================================
+  # SPORTS EVENT MODULE (FastAPI + React)
+  # ===============================================
+
+  sports-backend:
+    build:
+      context: ./Modules/Sports_Event_Management_Module/looseline_backend
+      dockerfile: Dockerfile
+    container_name: looseline_sports_backend
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-looseline}:${POSTGRES_PASSWORD:-looseline_secret}@postgres:5432/${SPORTS_DB:-looseline_sports}?sslmode=disable
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+    ports:
+      - "8001:8001"
+    networks:
+      - looseline_network
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  sports-frontend:
+    build:
+      context: .
+      dockerfile: ./Modules/Sports_Event_Management_Module/looseline_frontend/Dockerfile
+    container_name: looseline_sports_frontend
+    restart: unless-stopped
+    ports:
+      - "3002:80"
+    networks:
+      - looseline_network
+    depends_on:
+      - sports-backend
+
+  # ===============================================
+  # BETTING MODULE (FastAPI + React)
+  # ===============================================
+
+  betting-backend:
+    build:
+      context: ./Modules/The_betting_and_settlement_module/backend
+      dockerfile: Dockerfile
+    container_name: looseline_betting_backend
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-looseline}:${POSTGRES_PASSWORD:-looseline_secret}@postgres:5432/${BETTING_DB:-looseline_betting}?sslmode=disable
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+    ports:
+      - "8002:8002"
+    networks:
+      - looseline_network
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./Modules/The_betting_and_settlement_module/init-scripts/postgres:/docker-entrypoint-initdb.d:ro
+
+  betting-frontend:
+    build:
+      context: .
+      dockerfile: ./Modules/The_betting_and_settlement_module/Dockerfile.frontend
+    container_name: looseline_betting_frontend
+    restart: unless-stopped
+    ports:
+      - "3003:80"
+    networks:
+      - looseline_network
+    depends_on:
+      - betting-backend
+
+# ===============================================
+# VOLUMES
+# ===============================================
+
+volumes:
+  postgres_data:
+  redis_data:
+  finance_reports:
+  finance_logs:
+
+# ===============================================
+# NETWORKS
+# ===============================================
+
+networks:
+  looseline_network:
+    driver: bridge
+    name: looseline_network

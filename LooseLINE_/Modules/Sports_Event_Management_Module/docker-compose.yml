@@ -1,0 +1,56 @@
+# Sports Event Management Module - Local Development
+# Run: docker compose up -d
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: sports_postgres
+    restart: unless-stopped
+    ports:
+      - "5433:5432"
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-looseline_sports}
+      POSTGRES_USER: ${POSTGRES_USER:-looseline}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-looseline_secret}
+    volumes:
+      - sports_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-looseline}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./looseline_backend
+      dockerfile: Dockerfile
+    container_name: sports_backend
+    restart: unless-stopped
+    ports:
+      - "8001:8001"
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-looseline}:${POSTGRES_PASSWORD:-looseline_secret}@postgres:5432/${POSTGRES_DB:-looseline_sports}
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./looseline_backend:/app
+
+  frontend:
+    build:
+      context: ./looseline_frontend
+      dockerfile: Dockerfile
+    container_name: sports_frontend
+    restart: unless-stopped
+    ports:
+      - "3002:80"
+    depends_on:
+      - backend
+
+volumes:
+  sports_postgres_data:
+
+networks:
+  default:
+    name: sports_network

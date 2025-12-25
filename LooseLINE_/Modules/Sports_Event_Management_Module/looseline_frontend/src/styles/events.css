@@ -1,0 +1,100 @@
+/* Стили для событий - ТЁМНАЯ ТЕМА */
+
+.layout {
+  display: flex;
+  gap: var(--space-20);
+  padding: var(--space-32);
+  background-color: #1a252f;
+  min-height: 100vh;
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+.events {
+  flex: 3;
+}
+
+.events .h2 {
+  color: #ffffff;
+  margin-bottom: var(--space-20);
+}
+
+.sport-icon {
+  font-size: var(--font-size-xl);
+}
+
+.vs {
+  margin: 0 var(--space-6);
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.odds-row {
+  display: flex;
+  gap: var(--space-12);
+  margin-top: var(--space-12);
+}
+
+.odd-button {
+  flex: 1;
+  background: #34495e;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: var(--radius-base);
+  padding: var(--space-12);
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: var(--font-size-base);
+  font-family: var(--font-family-base);
+  color: #ffffff;
+  transition: all var(--duration-fast) var(--ease-standard);
+}
+
+.odd-button:hover {
+  background: var(--color-info);
+  color: white;
+  border-color: var(--color-info);
+  box-shadow: var(--shadow-sm);
+}
+
+.odd-button .caption {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.odd-button .coefficient {
+  color: var(--color-info);
+}
+
+.odd-button:hover .caption,
+.odd-button:hover .coefficient {
+  color: white;
+}
+
+.coupon {
+  flex: 1;
+  background: #2c3e50;
+  border-radius: var(--radius-lg);
+  padding: var(--space-24);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  height: fit-content;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  position: sticky;
+  top: calc(64px + var(--space-20));
+}
+
+.coupon-item {
+  margin-bottom: var(--space-12);
+  font-size: var(--font-size-base);
+  color: #ffffff;
+}
+
+.empty {
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.total {
+  margin-top: var(--space-16);
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-semibold);
+  color: #ffffff;
+}

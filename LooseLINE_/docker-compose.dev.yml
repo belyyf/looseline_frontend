@@ -1,0 +1,61 @@
+# Development override for local development with hot-reload
+# Usage: docker compose -f docker-compose.yml -f docker-compose.override.yml up
+
+services:
+  # Auth module - development with hot reload
+  auth-app:
+    build:
+      context: ./Modules/Authentication_and_User_Management_Module
+      dockerfile: Dockerfile
+      target: deps  # Use deps stage for development
+    command: npm run dev
+    volumes:
+      - ./Modules/Authentication_and_User_Management_Module:/app
+      - /app/node_modules
+      - /app/.next
+    environment:
+      NODE_ENV: development
+
+  # Finance backend - development with hot reload
+  finance-backend:
+    volumes:
+      - ./Modules/Finance_and_History_Module/backend:/app
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+
+  # Sports backend - development with hot reload
+  sports-backend:
+    volumes:
+      - ./Modules/Sports_Event_Management_Module/looseline_backend:/app
+    command: uvicorn main:app --host 0.0.0.0 --port 8001 --reload
+
+  # Sports frontend - development mode
+  sports-frontend:
+    build:
+      context: ./Modules/Sports_Event_Management_Module/looseline_frontend
+      dockerfile: Dockerfile
+      target: builder
+    command: npm run dev -- --host 0.0.0.0 --port 5173
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./Modules/Sports_Event_Management_Module/looseline_frontend:/app
+      - /app/node_modules
+
+  # Betting backend - development with hot reload
+  betting-backend:
+    volumes:
+      - ./Modules/The_betting_and_settlement_module/backend:/app
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8002 --reload
+
+  # Betting frontend - development mode
+  betting-frontend:
+    build:
+      context: ./Modules/The_betting_and_settlement_module
+      dockerfile: Dockerfile.frontend
+      target: builder
+    command: npm run dev -- --host 0.0.0.0 --port 5174
+    ports:
+      - "5174:5174"
+    volumes:
+      - ./Modules/The_betting_and_settlement_module:/app
+      - /app/node_modules
